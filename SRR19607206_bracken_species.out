@@ -1,0 +1,13 @@
+name	taxonomy_id	taxonomy_lvl	kraken_assigned_reads	added_reads	new_est_reads	fraction_total_reads
+Severe acute respiratory syndrome-related coronavirus	694009	S	1041	0	1041	0.59418
+Quadragintavirus ev129	2956347	S	115	45	160	0.09132
+Evevirus ev239	2955874	S	38	3	41	0.02340
+Peduovirus P22H1	2844217	S	28	1	29	0.01655
+Carjivirus communis	2955582	S	108	4	112	0.06393
+Carjivirus hominis	2955583	S	29	1	30	0.01712
+Aurodevirus hiberniae	2955382	S	11	0	11	0.00628
+Tequatrovirus kaw	2844208	S	25	37	62	0.03539
+Tequatrovirus gee4507	2844199	S	24	48	72	0.04110
+Jouyvirus ev207	2844249	S	20	81	101	0.05765
+Jouyvirus ev017	2844245	S	18	36	54	0.03082
+Radostvirus ev099	2844247	S	14	21	35	0.01998

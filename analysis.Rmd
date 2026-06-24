@@ -1,0 +1,572 @@
+---
+title: "Wastewater Metatranscriptomics: End-to-End Analysis"
+subtitle: "Rothman et al. 2021 — Viral Surveillance in Wastewater Influent"
+author: "Kelvin Wong"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    highlight: tango
+    code_folding: show
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width  = 10,
+  fig.height = 6
+)
+
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(jsonlite)
+library(knitr)
+library(kableExtra)
+library(plotly)
+
+# All output files live in this directory
+DATA_DIR <- "~/metagenomics_job"
+```
+
+---
+
+## Study Overview
+
+This notebook presents an end-to-end metatranscriptomic analysis of paired wastewater samples
+(enriched vs. unenriched) collected from the Encina Water Pollution Control Facility in Carlsbad,
+California. The data derive from **Rothman et al. 2021** (*Applied and Environmental Microbiology*),
+which profiled the wastewater virome across seven treatment plants between August 2020 and January 2021.
+
+**Ten samples** spanning five consecutive timepoints (Oct 5 – Nov 2, 2020) were selected: one
+unenriched and one respiratory-panel-enriched replicate per date.
+
+| Step | Tool | Purpose |
+|------|------|---------|
+| Download & downsample | `fasterq-dump`, `seqtk` | Retrieve ~10 M bp per sample |
+| QC | `fastp` | Trim adapters, filter low-quality reads |
+| Host filtering | `bowtie2` vs GRCh38 | Remove human reads |
+| Taxonomy | `kraken2` + `bracken` | Classify reads against a viral DB; re-estimate species-level abundance |
+| Variant calling | `bowtie2` + `bcftools` | Call SARS-CoV-2 SNVs in enriched samples |
+
+---
+
+## Steps 1 & 2: QC and Host Filtering
+
+### Analysis
+
+Raw paired-end reads were quality-trimmed with **fastp** (adapter removal, Q < 15 sliding window,
+minimum length 30 bp). Cleaned reads were then aligned to the human reference genome (GRCh38)
+using **bowtie2**; read pairs that failed to align were retained as host-depleted reads for
+downstream analysis.
+
+Host depletion is essential for wastewater metatranscriptomics: human nucleic acids shed from
+gastrointestinal and epithelial cells can comprise the vast majority of sequencing reads, masking
+the environmental viral signal.
+
+### Implementation
+
+```{r qc-load}
+srr_ids <- c(
+  "SRR18340978", "SRR18341017", "SRR18341028",
+  "SRR18341039", "SRR18341080",
+  "SRR19606889", "SRR19606932", "SRR19606954",
+  "SRR19607206", "SRR19607228"
+)
+
+# Parse fastp JSON for each sample
+parse_fastp <- function(srr) {
+  path <- path.expand(file.path(DATA_DIR, paste0(srr, "_fastp.json")))
+  js   <- fromJSON(path)
+  tibble(
+    Sample            = srr,
+    Reads_Before_QC   = js$summary$before_filtering$total_reads,
+    Reads_After_QC    = js$summary$after_filtering$total_reads,
+    Q30_Before        = round(js$summary$before_filtering$q30_rate * 100, 1),
+    Q30_After         = round(js$summary$after_filtering$q30_rate  * 100, 1),
+    Pct_Reads_Kept    = round(js$summary$after_filtering$total_reads /
+                                js$summary$before_filtering$total_reads * 100, 1)
+  )
+}
+
+qc_stats <- bind_rows(lapply(srr_ids, parse_fastp))
+```
+
+```{r qc-host-counts}
+# Count host-depleted reads from the output FASTQ files (read 1 only; pairs are equal)
+count_reads <- function(srr) {
+  f <- path.expand(file.path(DATA_DIR, paste0(srr, "_host_removed_1.fastq")))
+  raw <- system(paste("wc -l <", shQuote(f)), intern = TRUE)
+  n   <- as.integer(trimws(raw))
+  n / 4L   # 4 lines per FASTQ record
+}
+
+host_removed_counts <- sapply(srr_ids, count_reads)
+
+qc_stats <- qc_stats %>%
+  mutate(
+    Reads_After_HostFilter = host_removed_counts * 2L,   # both reads
+    Pct_Host_Removed = round(
+      (1 - host_removed_counts * 2 / Reads_After_QC) * 100, 1)
+  )
+```
+
+```{r qc-metadata}
+# Load sample metadata
+metadata <- read.csv(path.expand(file.path(DATA_DIR, "SraRunTable.csv")),
+                     stringsAsFactors = FALSE) %>%
+  select(Run, Collection_Date, Library.Name) %>%
+  mutate(
+    Treatment = ifelse(
+      grepl("enriched", Library.Name, ignore.case = TRUE),
+      "Enriched", "Unenriched"
+    )
+  ) %>%
+  rename(Sample = Run)
+
+qc_full <- qc_stats %>%
+  left_join(metadata, by = "Sample") %>%
+  select(Sample, Collection_Date, Treatment,
+         Reads_Before_QC, Reads_After_QC, Q30_After,
+         Reads_After_HostFilter, Pct_Host_Removed)
+```
+
+```{r qc-table}
+qc_full %>%
+  arrange(Collection_Date, Treatment) %>%
+  kable(
+    col.names = c("Sample", "Date", "Treatment",
+                  "Reads (raw)", "Reads (post-QC)", "Q30 % (post-QC)",
+                  "Reads (host-filtered)", "% Host Removed"),
+    caption = "Table 1. QC and host-depletion summary for all 10 samples.",
+    format.args = list(big.mark = ",")
+  ) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                full_width = FALSE) %>%
+  row_spec(which(qc_full %>% arrange(Collection_Date, Treatment) %>%
+                   pull(Treatment) == "Enriched"),
+           background = "#eaf4fb")
+```
+
+```{r qc-plot}
+qc_plot_data <- qc_full %>%
+  arrange(Collection_Date, Treatment) %>%
+  mutate(Label = Collection_Date) %>%
+  select(Label, Treatment,
+         `Raw reads`     = Reads_Before_QC,
+         `Post-QC`       = Reads_After_QC,
+         `Host-depleted` = Reads_After_HostFilter) %>%
+  pivot_longer(c(`Raw reads`, `Post-QC`, `Host-depleted`),
+               names_to = "Stage", values_to = "Reads") %>%
+  mutate(Stage = factor(Stage, levels = c("Raw reads", "Post-QC", "Host-depleted")))
+
+p1 <- ggplot(qc_plot_data, aes(x = Label, y = Reads / 1e3, fill = Stage,
+                                text = paste0("Sample: ", Label,
+                                              "<br>Stage: ", Stage,
+                                              "<br>Reads (k): ", round(Reads / 1e3, 1)))) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ Treatment, scales = "free_x") +
+  scale_fill_manual(values = c("#4e79a7", "#f28e2b", "#59a14f")) +
+  theme_minimal(base_size = 12) +
+  labs(
+    title = "Figure 1. Read counts at each processing stage",
+    x     = NULL,
+    y     = "Read pairs (thousands)",
+    fill  = "Stage"
+  ) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1, size = 9),
+        legend.position = "top")
+
+ggplotly(p1, tooltip = "text", width = 750) %>%
+  layout(
+    title  = list(text = "Figure 1. Read counts at each processing stage",
+                  y = 0.93, x = 0, xanchor = "left"),
+    legend = list(orientation = "v", x = 1.15, y = 0.5),
+    xaxis  = list(tickfont = list(size = 8)),
+    xaxis2 = list(tickfont = list(size = 8)),
+    margin = list(t = 80)
+  )
+```
+
+### Multiple Choice Question — QC
+
+> **Quality Control**
+>
+> After running fastp on your wastewater metatranscriptomic samples, you observe that fewer than
+> **1% of reads are discarded**, yet the mean read length decreases from **101 bp to ~90 bp**.
+> Which of the following best explains this?
+>
+> **A)** The sequencing run failed to generate full-length reads, indicating a library preparation error.
+>
+> **B)** Most reads are high quality end-to-end, but soft-trimming of low-quality bases and adapter
+> sequences at read ends shortens reads without discarding them entirely. ✓
+>
+> **C)** The fastp parameters were set too permissively, retaining reads that should have been removed.
+>
+> **D)** The reduction in read length indicates that the majority of reads are derived from degraded
+> RNA fragments rather than intact viral transcripts.
+
+### Multiple Choice Question — Host Filtering
+
+> **Host Filtering**
+>
+> After running bowtie2 host depletion on your wastewater metatranscriptomic samples, you find
+> that **fewer than 5% of reads** map to the human reference genome across all samples. Which of
+> the following best explains this surprisingly low rate of host reads?
+>
+> **A)** The host depletion step failed — the reads were not properly filtered against the human genome.
+>
+> **B)** Wastewater is a complex environmental matrix where human nucleic acids are heavily diluted
+> by microbial, dietary, and environmental genetic material, so low host-mapping rates are
+> expected and do not indicate a failed depletion. ✓
+>
+> **C)** The GRCh38 reference genome is too incomplete to capture most human sequences in sewage.
+>
+> **D)** The samples were collected from a low-density residential area with minimal human
+> biological input into the sewershed.
+
+---
+
+## Steps 3 & 4: Taxonomic Composition and Treatment Differences
+
+### Analysis
+
+Host-depleted reads were classified against a viral Kraken2 database using the
+**lowest common ancestor (LCA)** algorithm. Species-level relative abundances were then
+re-estimated with **Bracken**, which redistributes reads assigned to higher-level taxonomic
+nodes (genus, family) back down to the species level using a Bayesian statistical model.
+The resulting abundance profiles were compared between enriched and unenriched samples
+across the five timepoints, with SARS-CoV-2 relative abundance tracked as a key indicator
+of community transmission.
+
+> **Note on Bracken re-estimation:**
+> Kraken2 assigns reads using a lowest common ancestor (LCA) algorithm, which can leave a large
+> fraction of reads attributed to higher-level taxonomic nodes (e.g., genus or family) rather than
+> to a specific species. **Bracken** (Bayesian Re-estimation of Abundance with KrakEN) addresses
+> this by redistributing those higher-level read counts down to the species level using a
+> statistical model built from the database's k-mer distributions, producing more accurate
+> species-level relative abundances — particularly for low-abundance taxa that Kraken2 tends to
+> underestimate. The analysis below uses Bracken-corrected abundances (`fraction_total_reads`)
+> with `-r 100` to match the post-QC mean read length of ~90 bp.
+
+### Implementation
+
+```{r classification-summary}
+# Read classified vs unclassified counts from Kraken2 reports
+kraken_files <- list.files(path.expand(DATA_DIR), pattern = "_kraken\\.report$",
+                           full.names = TRUE)
+
+classif_data <- lapply(kraken_files, function(file) {
+  df <- read.table(file, sep = "\t", header = FALSE, stringsAsFactors = FALSE, quote = "")
+  colnames(df) <- c("percentage", "count_frag", "count_taxon", "rank", "taxid", "name")
+  df$name <- trimws(df$name)
+  srr <- regmatches(basename(file), regexpr("SRR[0-9]+", basename(file)))
+  unclassified <- df$count_frag[df$rank == "U"]
+  classified   <- df$count_frag[df$rank == "R"]
+  total        <- unclassified + classified
+  tibble(
+    Sample       = srr,
+    Total_Reads  = total,
+    Classified   = classified,
+    Unclassified = unclassified,
+    Pct_Classified = round(classified / total * 100, 1)
+  )
+}) %>%
+  bind_rows() %>%
+  left_join(metadata, by = "Sample") %>%
+  arrange(Collection_Date, Treatment)
+```
+
+```{r classification-plot}
+classif_plot_data <- classif_data %>%
+  mutate(
+    Label = Collection_Date,
+    Unclassified_pct = Unclassified / Total_Reads * 100,
+    Classified_pct   = Classified   / Total_Reads * 100
+  ) %>%
+  select(Label, Treatment, Collection_Date, Classified_pct, Unclassified_pct) %>%
+  pivot_longer(c(Classified_pct, Unclassified_pct),
+               names_to = "Category", values_to = "Percentage") %>%
+  mutate(Category = factor(ifelse(Category == "Classified_pct",
+                                  "Classified", "Unclassified"),
+                           levels = c("Unclassified", "Classified")))
+
+p_class <- ggplot(classif_plot_data,
+                  aes(x = reorder(Label, Collection_Date), y = Percentage,
+                      fill = Category,
+                      text = paste0("Sample: ", Label,
+                                    "<br>", Category, ": ",
+                                    round(Percentage, 1), "%"))) +
+  geom_col(position = "stack") +
+  facet_wrap(~ Treatment, scales = "free_x") +
+  scale_fill_manual(values = c("Classified" = "#59a14f", "Unclassified" = "#d3d3d3")) +
+  theme_minimal(base_size = 12) +
+  labs(
+    title = "Figure 2. Viral Classification Rate: Classified vs. Unclassified Reads",
+    x     = NULL,
+    y     = "Percentage of Host-Depleted Reads (%)",
+    fill  = NULL
+  ) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1, size = 9),
+        legend.position = "top")
+
+ggplotly(p_class, tooltip = "text", width = 700) %>%
+  layout(
+    legend = list(orientation = "v", x = 1.15, y = 0.5),
+    margin = list(t = 80)
+  )
+```
+
+```{r taxonomy-load}
+bracken_files <- list.files(path.expand(DATA_DIR), pattern = "_bracken_species\\.out$",
+                            full.names = TRUE)
+
+viral_data <- lapply(bracken_files, function(file) {
+  df <- read.table(file, sep = "\t", header = TRUE,
+                   stringsAsFactors = FALSE, quote = "")
+  df$Sample <- regmatches(basename(file),
+                          regexpr("SRR[0-9]+", basename(file)))
+  df
+}) %>%
+  bind_rows() %>%
+  inner_join(metadata, by = "Sample") %>%
+  rename(Species = name, Relative_Abundance = fraction_total_reads)
+```
+
+```{r taxonomy-topspecies}
+top_viruses <- viral_data %>%
+  group_by(Species) %>%
+  summarise(total = sum(Relative_Abundance), .groups = "drop") %>%
+  slice_max(total, n = 12) %>%
+  pull(Species)
+
+plot_data <- viral_data %>%
+  mutate(Plot_Species = ifelse(Species %in% top_viruses, Species, "Other")) %>%
+  group_by(Sample, Collection_Date, Treatment, Plot_Species) %>%
+  summarise(Abundance = sum(Relative_Abundance), .groups = "drop")
+```
+
+```{r taxonomy-plot}
+# Pre-compute proportions so tooltip values match the filled bar heights
+plot_data_norm <- plot_data %>%
+  group_by(Collection_Date, Treatment) %>%
+  mutate(Proportion = Abundance / sum(Abundance)) %>%
+  ungroup()
+
+p2 <- ggplot(plot_data_norm,
+       aes(x = as.factor(Collection_Date), y = Proportion, fill = Plot_Species,
+           text = paste0("Date: ", Collection_Date,
+                         "<br>Species: ", Plot_Species,
+                         "<br>Proportion: ", round(Proportion, 4)))) +
+  geom_bar(stat = "identity", position = "stack",
+           color = "white", linewidth = 0.2) +
+  facet_wrap(~ Treatment) +
+  scale_fill_viridis_d(option = "turbo") +
+  theme_minimal(base_size = 13) +
+  labs(
+    title = "Figure 3. Viral Taxonomic Composition: Enriched vs. Unenriched Wastewater",
+    x     = "Collection Date",
+    y     = "Relative Abundance (Proportion)",
+    fill  = "Viral Species"
+  ) +
+  theme(
+    axis.text.x        = element_text(angle = 45, hjust = 1),
+    legend.position    = "right",
+    legend.text        = element_text(size = 9),
+    panel.grid.major.x = element_blank()
+  )
+
+ggplotly(p2, tooltip = "text") %>%
+  layout(
+    legend = list(orientation = "v", x = 1.02, y = 0.5),
+    xaxis  = list(tickfont = list(size = 10), tickangle = -45),
+    xaxis2 = list(tickfont = list(size = 10), tickangle = -45),
+    margin = list(t = 80)
+  )
+```
+
+```{r sars-abundance}
+# Extract SARS-CoV-2 relative abundance per sample from Bracken output
+sars_data <- viral_data %>%
+  filter(grepl("severe acute", Species, ignore.case = TRUE)) %>%
+  select(Sample, Collection_Date, Treatment, Relative_Abundance) %>%
+  # Add zero rows for samples with no SARS-CoV-2 detected
+  right_join(metadata %>% left_join(
+    viral_data %>% select(Sample, Collection_Date) %>% distinct(),
+    by = "Sample"), by = c("Sample", "Treatment")) %>%
+  mutate(Relative_Abundance = replace_na(Relative_Abundance, 0),
+         Collection_Date = coalesce(Collection_Date.x, Collection_Date.y)) %>%
+  select(Sample, Collection_Date, Treatment, Relative_Abundance) %>%
+  distinct()
+
+p3 <- ggplot(sars_data,
+             aes(x = as.Date(Collection_Date), y = Relative_Abundance * 100,
+                 color = Treatment, group = Treatment,
+                 text = paste0("Date: ", Collection_Date,
+                               "<br>Treatment: ", Treatment,
+                               "<br>SARS-CoV-2: ", round(Relative_Abundance * 100, 2), "%"))) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("Enriched" = "#e15759", "Unenriched" = "#4e79a7")) +
+  scale_x_date(date_labels = "%b %d", date_breaks = "1 week") +
+  theme_minimal(base_size = 12) +
+  labs(
+    title = "Figure 4. SARS-CoV-2 Relative Abundance Over Time",
+    x     = "Collection Date",
+    y     = "SARS-CoV-2 Relative Abundance (%)",
+    color = "Treatment"
+  )
+
+ggplotly(p3, tooltip = "text") %>%
+  layout(margin = list(t = 80))
+```
+
+### Multiple Choice Question — Step 3: Taxonomic Composition
+
+> **Taxonomic Composition**
+>
+> Your Kraken2/Bracken classification shows that the **majority of host-depleted reads cannot
+> be assigned to any known virus** across most samples — including 3 out of 5 enriched samples
+> which show classification rates below 6%, comparable to unenriched samples. Only 2 enriched
+> samples (Oct 12 and Oct 26) show substantially higher classification (~32%). Which of the
+> following best explains why most reads remain unclassified regardless of treatment?
+>
+> **A)** The host-depletion step was too aggressive and inadvertently removed most viral reads
+> along with the human reads.
+>
+> **B)** Unclassified reads in wastewater arise from two compounding factors: environmental
+> viruses such as bacteriophages and plant-derived organisms that are absent from current
+> reference databases, and RNA degradation in sewage that fragments and damages captured
+> sequences enough to break Kraken2's k-mer matching — even for known target viruses like
+> SARS-CoV-2. ✓
+>
+> **C)** The enrichment panel failed for most samples and the experiment needs to be repeated.
+>
+> **D)** A low classification rate indicates the sequencing runs were contaminated and the
+> reads are mostly noise.
+
+### Multiple Choice Question — Step 4: Treatment Differences
+
+> **Treatment Differences**
+>
+> When comparing your enriched and unenriched wastewater sequencing results, you notice the
+> unenriched samples are almost entirely dominated by **plant viruses**, with SARS-CoV-2
+> completely undetected, while enriched samples show SARS-CoV-2 comprising **25–63%** of
+> classified reads. Which of the following is best supported?
+>
+> **A)** The unenriched samples were heavily contaminated by agricultural runoff before reaching
+> the treatment plant.
+>
+> **B)** The bioinformatic classification database is fundamentally biased against human viruses.
+>
+> **C)** Plant viruses from food consumption represent the true ecological baseline of the
+> wastewater virome, and the Illumina Respiratory Virus Oligonucleotide Panel's
+> hybridisation probes were necessary to selectively capture and concentrate the low-abundance
+> SARS-CoV-2 signal above this environmental background. ✓
+>
+> **D)** The community had no active COVID-19 cases on the days the unenriched samples were collected.
+
+---
+
+## Step 5: SARS-CoV-2 Single Nucleotide Variants (SNVs)
+
+### Analysis
+
+Host-depleted reads from enriched samples were aligned to the Wuhan-Hu-1 SARS-CoV-2 reference
+genome using **bowtie2** (local, very-sensitive). Variants were called with **bcftools mpileup /
+call**. Because wastewater RNA is highly degraded, genomic coverage is uneven ("Swiss cheese"
+pattern). To avoid reporting noise as signal, SNVs were only retained at positions with a minimum
+total read depth of **≥ 10** reads and an alternate allele frequency of **≥ 5%**.
+
+The interactive heatmap below shows variant frequencies across samples and genomic positions,
+allowing rapid identification of mutations shared across timepoints — a signal of sustained
+community transmission — versus private variants present in only one sample.
+
+> Variant calling was run on all five enriched samples:
+> SRR19606889, SRR19606932, SRR19606954, SRR19607206, SRR19607228.
+
+### Implementation
+
+```{r variants-load}
+df_variants <- read.csv(path.expand(file.path(DATA_DIR, "variant_summary.csv")))
+
+df_filtered <- df_variants %>%
+  filter(!is.na(POS),
+         Total_Depth >= 10,
+         Frequency   >= 0.05) %>%
+  arrange(POS) %>%
+  left_join(metadata, by = "Sample")
+```
+
+```{r variants-summary-table}
+df_filtered %>%
+  count(Sample, Treatment, name = "N_SNVs") %>%
+  arrange(Treatment, Sample) %>%
+  kable(caption = "Table 3. Number of SNVs passing filters per sample.",
+        col.names = c("Sample", "Treatment", "SNVs (depth ≥ 10, freq ≥ 5%)")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+```{r variants-heatmap, fig.height=8}
+fig <- plot_ly(
+  data       = df_filtered,
+  x          = ~Sample,
+  y          = ~as.factor(POS),
+  z          = ~Frequency,
+  type       = "heatmap",
+  colorscale = "Viridis",
+  hoverinfo  = "text",
+  text       = ~paste(
+    "Sample:", Sample,
+    "<br>Treatment:", Treatment,
+    "<br>Position:", POS,
+    "<br>Mutation:", REF, "->", ALT,
+    "<br>Depth:", Total_Depth,
+    "<br>Frequency:", round(Frequency, 3)
+  )
+) %>%
+  layout(
+    title  = "Figure 5. SARS-CoV-2 Variant Frequencies Across Samples",
+    xaxis  = list(title = "Sample ID"),
+    yaxis  = list(title = "Genomic Position",
+                  type  = "category",
+                  tickmode = "auto",
+                  nticks   = 20),
+    margin = list(l = 100, b = 100, t = 80)
+  )
+
+fig
+```
+
+### Multiple Choice Question
+
+> **SARS-CoV-2 SNV Analysis**
+>
+> You are tracking SARS-CoV-2 variants in a wastewater sample. For a specific
+> lineage-defining mutation, your variant caller outputs an **alternate allele depth of 5** and a
+> **total read depth of 5** (yielding a 100% mutation frequency). Which of the following is
+> best supported?
+>
+> **A)** The variant has reached complete fixation and is the only strain circulating in the
+> local community.
+>
+> **B)** While the calculated frequency is 100%, a total depth of 5 is statistically
+> indistinguishable from sequencing noise in degraded wastewater and cannot be confidently
+> reported. ✓
+>
+> **C)** The sample must be chemically re-enriched because the genomic coverage is uneven.
+>
+> **D)** The reference genome was incorrectly assigned during the alignment phase.
+
+---
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```

@@ -1,0 +1,20 @@
+name	taxonomy_id	taxonomy_lvl	kraken_assigned_reads	added_reads	new_est_reads	fraction_total_reads
+Quadragintavirus ev129	2956347	S	312	117	429	0.14793
+Evevirus ev239	2955874	S	82	10	92	0.03172
+Peduovirus P22H1	2844217	S	67	3	70	0.02414
+Peduovirus P22H4	2844218	S	11	0	11	0.00379
+Eganvirus SW9	2846110	S	17	5	22	0.00759
+Tequatrovirus kaw	2844208	S	56	96	152	0.05241
+Tequatrovirus gee4507	2844199	S	41	95	136	0.04690
+Carjivirus communis	2955582	S	46	8	54	0.01862
+Carjivirus hominis	2955583	S	11	1	12	0.00414
+Jouyvirus ev017	2844245	S	64	151	215	0.07414
+Jouyvirus ev207	2844249	S	27	125	152	0.05241
+Radostvirus ev099	2844247	S	23	41	64	0.02207
+Omarvirus omar	2956237	S	15	0	15	0.00517
+Cucumber green mottle mosaic virus	12235	S	1346	0	1346	0.46414
+Tomato brown rugose fruit virus	1761477	S	21	0	21	0.00724
+Pepper mild mottle virus	12239	S	14	0	14	0.00483
+Orthohantavirus oxbowense	3052491	S	36	0	36	0.01241
+Kinglevirus lutadaptatum	2845070	S	14	0	14	0.00483
+Betabaculovirus chofumiferanae	3051997	S	38	0	38	0.01310

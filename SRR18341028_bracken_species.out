@@ -1,0 +1,12 @@
+name	taxonomy_id	taxonomy_lvl	kraken_assigned_reads	added_reads	new_est_reads	fraction_total_reads
+Quadragintavirus ev129	2956347	S	132	61	193	0.25130
+Evevirus ev239	2955874	S	36	4	40	0.05208
+Peduovirus P22H1	2844217	S	24	1	25	0.03255
+Eganvirus SW9	2846110	S	10	3	13	0.01693
+Carjivirus communis	2955582	S	115	8	123	0.16016
+Carjivirus hominis	2955583	S	16	1	17	0.02214
+Tequatrovirus kaw	2844208	S	19	40	59	0.07682
+Tequatrovirus gee4507	2844199	S	14	40	54	0.07031
+Jouyvirus ev017	2844245	S	30	86	116	0.15104
+Jouyvirus ev207	2844249	S	10	57	67	0.08724
+Radostvirus ev099	2844247	S	18	39	57	0.07422

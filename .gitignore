@@ -1,0 +1,35 @@
+# Large sequencing files
+*.fastq
+*.fq
+*.bam
+*.bai
+*.bcf
+*.sam
+*.cram
+
+# Reference genomes and indexes
+*.fasta
+*.fa
+*.fai
+*.bt2
+*.zip
+*.tar.gz
+*.zq
+
+# Large databases
+kraken_viral_db/
+GRCh38_noalt_as/
+
+# Bracken source (installed locally)
+Bracken/
+
+# fastp HTML reports (large)
+*_fastp.html
+
+# Kraken raw output (large, reports are kept)
+*_kraken.out
+
+# R artifacts
+.Rhistory
+.RData
+.Rproj.user/

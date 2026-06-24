@@ -1,0 +1,56 @@
+100.00	10218	0	R	1	root
+100.00	10218	0	D	10239	  Viruses
+94.87	9695	0	D1	2559587	    Riboviria
+94.87	9695	0	K	2732396	      Orthornavirae
+62.81	6419	0	P	2732408	        Pisuviricota
+62.81	6419	0	C	2732506	          Pisoniviricetes
+62.81	6419	0	O	76804	            Nidovirales
+62.81	6419	0	O1	2499399	              Cornidovirineae
+62.81	6419	0	F	11118	                Coronaviridae
+62.81	6419	0	F1	2501931	                  Orthocoronavirinae
+62.81	6419	0	G	694002	                    Betacoronavirus
+62.81	6419	0	G1	2509511	                      Sarbecovirus
+62.81	6419	6419	S	694009	                        Severe acute respiratory syndrome-related coronavirus
+31.61	3230	0	P	2732406	        Kitrinoviricota
+31.61	3230	0	C	2732461	          Alsuviricetes
+31.61	3230	0	O	2732544	            Martellivirales
+31.61	3230	0	F	675071	              Virgaviridae
+31.61	3230	0	G	12234	                Tobamovirus
+30.71	3138	3138	S	12235	                  Cucumber green mottle mosaic virus
+0.67	68	68	S	1761477	                  Tomato brown rugose fruit virus
+0.23	24	24	S	12239	                  Pepper mild mottle virus
+0.45	46	0	P	2497569	        Negarnaviricota
+0.45	46	0	P1	2497571	          Polyploviricotina
+0.45	46	0	C	2497576	            Ellioviricetes
+0.45	46	0	O	1980410	              Bunyavirales
+0.45	46	0	F	1980413	                Hantaviridae
+0.45	46	0	F1	2560074	                  Mammantavirinae
+0.45	46	0	G	1980442	                    Orthohantavirus
+0.45	46	46	S	3052491	                      Orthohantavirus oxbowense
+4.53	463	0	D1	2731341	    Duplodnaviria
+4.53	463	0	K	2731360	      Heunggongvirae
+4.53	463	0	P	2731618	        Uroviricota
+4.53	463	0	C	2731619	          Caudoviricetes
+2.19	224	0	F	2946167	            Peduoviridae
+1.51	154	0	G	2948876	              Quadragintavirus
+1.51	154	154	S	2956347	                Quadragintavirus ev129
+0.46	46	0	G	2948703	              Evevirus
+0.46	46	46	S	2955874	                Evevirus ev239
+0.22	22	0	G	140410	              Peduovirus
+0.22	22	22	S	2844217	                Peduovirus P22H1
+1.65	168	0	G	2843396	            Jouyvirus
+1.01	102	102	S	2844245	              Jouyvirus ev017
+0.64	65	65	S	2844249	              Jouyvirus ev207
+0.35	36	0	O	1978007	            Crassvirales
+0.35	36	0	F	2942964	              Intestiviridae
+0.35	36	0	F1	2942972	                Crudevirinae
+0.35	36	0	G	2948652	                  Carjivirus
+0.20	20	20	S	2955583	                    Carjivirus hominis
+0.15	15	15	S	2955582	                    Carjivirus communis
+0.34	34	0	G	2843442	            Radostvirus
+0.34	34	34	S	2844247	              Radostvirus ev099
+0.60	61	0	C	2840056	    Naldaviricetes
+0.60	61	0	O	2840070	      Lefavirales
+0.60	61	0	F	10442	        Baculoviridae
+0.60	61	0	G	558017	          Betabaculovirus
+0.60	61	61	S	3051997	            Betabaculovirus chofumiferanae

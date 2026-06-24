@@ -33,3 +33,6 @@ Bracken/
 .Rhistory
 .RData
 .Rproj.user/
+.DS_Store
+*.docx
+*.png

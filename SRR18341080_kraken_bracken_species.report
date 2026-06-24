@@ -1,0 +1,26 @@
+100.00	322	0	R	1	root
+100.00	322	0	D	10239	  Viruses
+100.00	322	0	D1	2731341	    Duplodnaviria
+100.00	322	0	K	2731360	      Heunggongvirae
+100.00	322	0	P	2731618	        Uroviricota
+100.00	322	0	C	2731619	          Caudoviricetes
+35.83	115	0	G	2843396	            Jouyvirus
+18.80	60	60	S	2844245	              Jouyvirus ev017
+17.03	54	54	S	2844249	              Jouyvirus ev207
+24.53	79	0	F	2946167	            Peduoviridae
+20.18	64	0	G	2948876	              Quadragintavirus
+20.18	64	64	S	2956347	                Quadragintavirus ev129
+4.35	14	0	G	2948703	              Evevirus
+4.35	14	14	S	2955874	                Evevirus ev239
+20.81	67	0	O	1978007	            Crassvirales
+20.81	67	0	F	2942964	              Intestiviridae
+20.81	67	0	F1	2942972	                Crudevirinae
+20.81	67	0	G	2948652	                  Carjivirus
+20.81	67	67	S	2955582	                    Carjivirus communis
+15.72	50	0	F	2946170	            Straboviridae
+15.72	50	0	F1	1198136	              Tevenvirinae
+15.72	50	0	G	10663	                Tequatrovirus
+8.91	28	28	S	2844199	                  Tequatrovirus gee4507
+6.81	21	21	S	2844208	                  Tequatrovirus kaw
+3.11	10	0	G	3044840	            Tepukevirus
+3.11	10	10	S	3060728	              Tepukevirus Psa21
